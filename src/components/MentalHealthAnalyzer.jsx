@@ -163,43 +163,22 @@ const TypewriterText = ({ text, onComplete }) => {
 const DataUploader = ({ onDataLoad }) => {
     const [status, setStatus] = useState('checking');
     const [error, setError] = useState('');
-    const [trainingSize, setTrainingSize] = useState(100);
+    const [trainingSize, setTrainingSize] = useState(0);
     const [uploadProgress, setUploadProgress] = useState(0);
 
     const processData = (data) => {
-        // Normalize and validate the data
         return data.map(row => ({
-            text: row.text || row.Text || row.content || row.Content || '',
-            concern: row.concern || row.Concern || row.category || row.Category || 'general',
-            category: row.emotionalCategory || row.EmotionalCategory || row.type || row.Type || 'emotional',
-            intensity: parseFloat(row.intensity || row.Intensity || 0) || 0,
-            timestamp: new Date(row.timestamp || row.Timestamp || Date.now()).getTime(),
-            polarity: parseFloat(row.polarity || row.Sentiment || 0) || 0
-        })).filter(item => item.text.trim() !== ''); // Remove empty entries
+            text: row.UserInput || row['User Input'] || '',
+            polarity: row.Polarity || '',
+            concern: row['Extracted Concern'] || '',
+            category: row.Category || '',
+            intensity: parseFloat(row.Intensity || 0)
+        })).filter(item => item.text && item.polarity && item.concern && item.category);
     };
 
-    const handleCSV = async (file) => {
-        return new Promise((resolve, reject) => {
-            Papa.parse(file, {
-                header: true,
-                complete: (results) => {
-                    if (results.errors.length > 0) {
-                        reject(new Error('CSV parsing error: ' + results.errors[0].message));
-                        return;
-                    }
-                    resolve(processData(results.data));
-                },
-                error: (error) => {
-                    reject(new Error('CSV parsing error: ' + error.message));
-                }
-            });
-        });
-    };
-
-    const handleExcel = async (file) => {
+    const handleExcel = async (fileContent) => {
         try {
-            const data = await file.arrayBuffer();
-            const workbook = read(data);
+            const workbook = read(fileContent);
             const worksheet = workbook.Sheets[workbook.SheetNames[0]];
             const jsonData = utils.sheet_to_json(worksheet);
             return processData(jsonData);
@@ -208,72 +187,76 @@ const DataUploader = ({ onDataLoad }) => {
         }
     };
 
-    const loadDataFromFile = useCallback(async (file) => {
+    const loadData = async () => {
         try {
             setStatus('loading');
-            setUploadProgress(0);
-            let data;
+            setUploadProgress(25);
 
-            if (file.name.endsWith('.csv')) {
-                data = await handleCSV(file);
-            } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
-                data = await handleExcel(file);
-            } else {
-                throw new Error('Unsupported file format. Please use CSV or Excel files.');
+            // Load XLSX file from the public directory
+            const response = await fetch('/data/training_data.xlsx');
+            if (!response.ok) {
+                throw new Error('Failed to fetch XLSX file');
             }
 
-            // Validate data
+            const fileBuffer = await response.arrayBuffer();
+            setUploadProgress(50);
+
+            const data = await handleExcel(fileBuffer);
+            setUploadProgress(75);
+
+            // Validate data structure
             if (!Array.isArray(data) || data.length === 0) {
-                throw new Error('No valid data found in file');
+                throw new Error('No valid data found in XLSX file');
             }
 
-            // Store in localStorage
-            try {
-                localStorage.setItem(LOCAL_STORAGE_KEYS.TRAINING_DATA, JSON.stringify(data));
-            } catch (e) {
-                console.warn('Failed to store in localStorage, data size may be too large');
-                // Continue anyway as data is loaded in memory
+            const invalidRows = data.filter(row =>
+                !row.text || !row.polarity || !row.concern || !row.category || isNaN(row.intensity)
+            );
+
+            if (invalidRows.length > 0) {
+                throw new Error(`Found ${invalidRows.length} invalid rows. Please check your data format.`);
             }
 
+            // Store validated data
+            localStorage.setItem('mental_health_analyzer_training_data', JSON.stringify(data));
             onDataLoad(data);
             setStatus('loaded');
             setTrainingSize(data.length);
             setUploadProgress(100);
+
         } catch (err) {
             setError(`Failed to load data: ${err.message}`);
             console.error('Data loading error:', err);
             setStatus('error');
+            setUploadProgress(0);
         }
-    }, [onDataLoad]);
+    };
 
-    const handleFileUpload = useCallback((event) => {
-        const file = event.target.files[0];
-        if (file) {
-            loadDataFromFile(file);
-        }
-    }, [loadDataFromFile]);
+    useEffect(() => {
+        loadData();
+    }, []);
 
     return (
         <Card className="mb-4">
             <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                     <Upload className="h-5 w-5" />
-                    Data Upload Status
+                    Training Data Status
                 </CardTitle>
             </CardHeader>
             <CardContent>
                 <div className="space-y-4">
                     <Alert>
                         <AlertDescription>
-                            {status === 'checking' && 'Ready to load data...'}
-                            {status === 'loading' && 'Processing data file...'}
-                            {status === 'loaded' && `Successfully loaded ${trainingSize} samples`}
+                            {status === 'checking' && 'Preparing to load training data...'}
+                            {status === 'loading' && 'Loading XLSX training data...'}
+                            {status === 'loaded' && `Successfully loaded ${trainingSize} training samples`}
                             {status === 'error' && 'Error loading data'}
                         </AlertDescription>
                     </Alert>
 
                     {uploadProgress > 0 && uploadProgress < 100 && (
-                        <div className="c">
+                        <div className="w-full bg-gray-200 rounded-full h-2.5">
                             <div
                                 className="bg-blue-600 h-2.5 rounded-full"
                                 style={{ width: `${uploadProgress}%` }}
@@ -287,29 +270,14 @@ const DataUploader = ({ onDataLoad }) => {
                         </Alert>
                     )}
 
-                    <div className="space-y-2">
-                        <input
-                            type="file"
-                            accept=".csv,.xlsx,.xls"
-                            onChange={handleFileUpload}
-                            className="block w-full text-sm text-gray-500
-                                file:mr-4 file:py-2 file:px-4
-                                file:rounded-full file:border-0
-                                file:text-sm file:font-semibold
-                                file:bg-blue-50 file:text-blue-700
-                                hover:file:bg-blue-100"
-                        />
-                        <p className="text-sm text-gray-500">
-                            Supported formats: CSV, Excel (.xlsx, .xls)
-                        </p>
-                    </div>
-
                     {status === 'loaded' && (
                         <div className="mt-4">
                             <h4 className="font-medium mb-2">Dataset Summary:</h4>
                             <ul className="list-disc list-inside space-y-1 text-sm">
-                                <li>Total samples: {trainingSize}</li>
-                                <li>File type: {status === 'loaded' ? 'CSV/Excel' : 'N/A'}</li>
+                                <li>Total training samples: {trainingSize}</li>
+                                <li>Required columns: User Input, Polarity, Extracted Concern, Category, Intensity</li>
+                                <li>File type: XLSX</li>
+                                <li>Status: Data loaded and validated</li>
                             </ul>
                         </div>
                     )}
