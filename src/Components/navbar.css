@@ -1,34 +1,49 @@
-.navbar{
+.navbar {
     background-color: yellow;
     padding: 10px;
     display: flex;
-    justify-content: space-between;
-    gap: 2px;
     align-items: center;
+    position: relative;
 }
 
-.Logo{
+.Logo {
+    display: flex;
+    align-items: center;
     font-size: 1.5rem;
     font-weight: bold;
     color: black;
+}
+
+.Logo a {
     text-decoration: none;
-}
-
-.navbar ul {
+    color: black;
     display: flex;
-    list-style: none;
-    margin: 10px auto;
     align-items: center;
-    gap: 5px;
 }
 
-.navbar ul a{
-    color:black;
+.Logo img {
+    height: 50px;
+    margin-right: 10px;
+}
+
+.navbar-nav {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    gap: 20px;
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.navbar-nav .nav-link {
+    color: black;
     text-decoration: none;
     padding: 10px;
 }
 
-.navbar ul a:hover{
+.navbar-nav .nav-link:hover {
     color: white;
     background-color: black;
     border-radius: 5px;
