@@ -4,16 +4,32 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { StaticDatePicker } from '@mui/x-date-pickers/StaticDatePicker';
 import dayjs from 'dayjs';
 import './Diary.css';
+import axios from 'axios';
 
 const Diary = () => {
     const [selectedDate, setSelectedDate] = useState(dayjs());
     const [diaryEntry, setDiaryEntry] = useState('');
-    const [savedEntries, setSavedEntry] = useState({});
+    const [savedEntries, setSavedEntry] = useState([]);
+
+    useEffect(() => {
+        const fetchDiaryEntries = async () => {
+            try {
+                const response = await axios.get('http://localhost:5000/get_diary');
+                setSavedEntry(response.data);
+                console.log("Successfully fetched ENTRIES");
+            } catch (error) {
+                console.error("Error fetching diary entries:", error);
+            }
+        };
+        fetchDiaryEntries();
+    }, []);
+
 
     useEffect(() => {
         const dateKey = selectedDate.format('YYYY-MM-DD');
-        if (savedEntries[dateKey]) {
-            setDiaryEntry(savedEntries[dateKey]);
+        const entry = savedEntries.find((entry) => entry.date === dateKey);
+        if (entry) {
+            setDiaryEntry(entry.content);
         } else {
             setDiaryEntry('');
         }
@@ -21,12 +37,23 @@ const Diary = () => {
 
     const HandleSave = () => {
         const dateKey = selectedDate.format('YYYY-MM-DD');
-        setSavedEntry({
-            ...savedEntries,
-            [dateKey]: diaryEntry,
+        axios.post('http://localhost:5000/add_diary', {
+            date: selectedDate.format('YYYY-MM-DD'),
+            content: diaryEntry,
+        }).then(() => {
+            alert('Diary Saved')
+            setSavedEntry((prevEntry) => {
+                const Existing = prevEntry.findIndex((entry) => entry.date === dateKey);
+                if (Existing !== -1) {
+                    const updatedEntries = [...prevEntry];
+                    updatedEntries[Existing].content = diaryEntry;
+                    return updatedEntries;
+                } else {
+                    return [...prevEntry, { date: dateKey, content: diaryEntry }];
+                }
+            })
         });
-        alert('Diary Saved')
-    };
+    }
 
     return (
         <div className="Diary">
